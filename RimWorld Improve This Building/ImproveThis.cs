@@ -64,6 +64,8 @@ namespace RimWorld___Improve_This {
                 return null;
             }
             // needs work done
+            if (!GenConstruct.CanConstruct(t, pawn, checkSkills: true, forced))
+                return null;
             Job j = JobMaker.MakeJob(ImproveThisJobDef, t);
             if (j.TryMakePreToilReservations(pawn, false)) return j;
             return null;
@@ -206,6 +208,7 @@ namespace RimWorld___Improve_This {
         private Command GetCommandButton() {
             CompQuality compQuality = parent.TryGetComp<CompQuality>();
             if (compQuality == null || compQuality.Quality == QualityCategory.Legendary) return null;
+            if (parent.def.blueprintDef == null) return null; // probably piano and such
 
             Command_Toggle cmd = new Command_Toggle();
             cmd.isActive = delegate() { return improveRequested; };
