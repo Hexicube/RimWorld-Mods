@@ -95,6 +95,8 @@ namespace RimWorld___Improve_This {
     }
 
     public class WorkGiver_ImproveThis : WorkGiver_Scanner {
+        public static WorkTypeDef ImproveWorkType = DefDatabase<WorkTypeDef>.GetNamed("Improving");
+
         private static JobDef ImproveThisJobDef = DefDatabase<JobDef>.GetNamed("Improve");
 
         public override ThingRequest PotentialWorkThingRequest => ThingRequest.ForGroup(ThingRequestGroup.BuildingArtificial);
@@ -153,8 +155,21 @@ namespace RimWorld___Improve_This {
                 return null;
             }
             // needs work done
-            if (!GenConstruct.CanConstruct(t, pawn, WorkTypeDefOf.Construction, forced))
+            if (!pawn.workSettings.WorkIsActive(ImproveWorkType)) {
+                JobFailReason.Is("NotAssignedToWorkType".Translate(ImproveWorkType.gerundLabel).CapitalizeFirst());
                 return null;
+            }
+            if (!GenConstruct.CanConstruct(t, pawn, true, forced))
+                return null;
+            // if the building is already Masterwork, make sure the pawn is inspired
+            // pawns CANNOT make Legendary things normally
+            CompQuality q = t.TryGetComp<CompQuality>();
+            if (q.Quality == QualityCategory.Masterwork) {
+                if (pawn.InspirationDef != InspirationDefOf.Inspired_Creativity) {
+                    JobFailReason.Is("ImproveInspireNeeded".Translate());
+                    return null;
+                }
+            }
             Job j = JobMaker.MakeJob(ImproveThisJobDef, t);
             if (j.TryMakePreToilReservations(pawn, false)) return j;
             return null;
@@ -199,6 +214,9 @@ namespace RimWorld___Improve_This {
             build.FailOnDespawnedNullOrForbidden(TargetIndex.A);
             build.FailOnCannotTouch(TargetIndex.A, PathEndMode.Touch);
             build.FailOn(() => !GenConstruct.CanConstruct(JobTarget.parent, pawn));
+            CompQuality q = JobTarget.parent.TryGetComp<CompQuality>();
+            if (q.Quality == QualityCategory.Masterwork)
+                build.FailOn(() => pawn.InspirationDef != InspirationDefOf.Inspired_Creativity);
             build.WithProgressBar(TargetIndex.A, () => (float)JobTarget.workDone / (float)JobTarget.WorkToBuild);
             build.defaultCompleteMode = ToilCompleteMode.Delay;
             build.defaultDuration = 5000;
