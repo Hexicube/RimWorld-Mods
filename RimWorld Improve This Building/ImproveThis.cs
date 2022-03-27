@@ -5,6 +5,95 @@ using Verse;
 using Verse.AI;
 
 namespace RimWorld___Improve_This {
+    public class Designator_ImproveThis : Designator {
+        public static DesignationDef ImproveDesignationDef = DefDatabase<DesignationDef>.GetNamed("ImproveThis", true);
+
+        public Designator_ImproveThis() {
+            defaultLabel = "DesignateOnLabel".Translate();
+            defaultDesc = "DesignateOnDesc".Translate();
+            icon = ContentFinder<UnityEngine.Texture2D>.Get("Improve");
+            soundDragSustain = SoundDefOf.Designate_DragStandard;
+            soundDragChanged = SoundDefOf.Designate_DragStandard_Changed;
+            useMouseIcon = true;
+            soundSucceeded = SoundDefOf.Designate_Haul;
+        }
+
+        public override int DraggableDimensions => 2;
+
+        public override AcceptanceReport CanDesignateCell(IntVec3 p) {
+            Map map = Find.CurrentMap;
+            if (!GenGrid.InBounds(p, map) || GridsUtility.Fogged(p, map)) return AcceptanceReport.WasRejected;
+            List<Thing> things = map.thingGrid.ThingsListAt(p);
+            if (things.Any ( (Thing t) => CanDesignateThing(t))) return AcceptanceReport.WasAccepted;
+            return AcceptanceReport.WasRejected;
+        }
+        public override void DesignateSingleCell(IntVec3 p) {
+            Map map = Find.CurrentMap;
+            if (GenGrid.InBounds(p, map) && !GridsUtility.Fogged(p, map)) {
+                List<Thing> things = map.thingGrid.ThingsListAt(p);
+                things.ForEach( (Thing t) => DesignateThing(t));
+            }
+        }
+
+        public override AcceptanceReport CanDesignateThing(Thing t) {
+            ImproveThisComp c = t.TryGetComp<ImproveThisComp>();
+            if (c == null || c.improveRequested) return AcceptanceReport.WasRejected;
+            CompQuality q = t.TryGetComp<CompQuality>();
+            if (q == null || q.Quality == QualityCategory.Legendary) return AcceptanceReport.WasRejected;
+            if (t.def.blueprintDef == null) return AcceptanceReport.WasRejected; // probably piano and such
+            return AcceptanceReport.WasAccepted;
+        }
+
+        public override void DesignateThing(Thing t) {
+            ImproveThisComp c = t.TryGetComp<ImproveThisComp>();
+            if (c == null || c.improveRequested) return;
+            CompQuality q = t.TryGetComp<CompQuality>();
+            if (q == null || q.Quality == QualityCategory.Legendary) return;
+            if (t.def.blueprintDef == null) return; // probably piano and such
+            c.improveRequested = true;
+        }
+    }
+
+    public class Designator_ImproveThisClear : Designator {
+        public Designator_ImproveThisClear() {
+            defaultLabel = "DesignateOffLabel".Translate();
+            defaultDesc = "DesignateOffDesc".Translate();
+            icon = ContentFinder<UnityEngine.Texture2D>.Get("NoImprove");
+            soundDragSustain = SoundDefOf.Designate_DragStandard;
+            soundDragChanged = SoundDefOf.Designate_DragStandard_Changed;
+            useMouseIcon = true;
+            soundSucceeded = SoundDefOf.Designate_Haul;
+        }
+
+        public override int DraggableDimensions => 2;
+
+        public override AcceptanceReport CanDesignateCell(IntVec3 p) {
+            Map map = Find.CurrentMap;
+            if (!GenGrid.InBounds(p, map) || GridsUtility.Fogged(p, map)) return AcceptanceReport.WasRejected;
+            List<Thing> things = map.thingGrid.ThingsListAt(p);
+            if (things.Any ( (Thing t) => CanDesignateThing(t))) return AcceptanceReport.WasAccepted;
+            return AcceptanceReport.WasRejected;
+        }
+        public override void DesignateSingleCell(IntVec3 p) {
+            Map map = Find.CurrentMap;
+            if (GenGrid.InBounds(p, map) && !GridsUtility.Fogged(p, map)) {
+                List<Thing> things = map.thingGrid.ThingsListAt(p);
+                things.ForEach( (Thing t) => DesignateThing(t));
+            }
+        }
+
+        public override AcceptanceReport CanDesignateThing(Thing t) {
+            if (t.Map.designationManager.DesignationOn(t, Designator_ImproveThis.ImproveDesignationDef) != null) return AcceptanceReport.WasAccepted;
+            return AcceptanceReport.WasRejected;
+        }
+
+        public override void DesignateThing(Thing t) {
+            ImproveThisComp c = t.TryGetComp<ImproveThisComp>();
+            if (c == null || !c.improveRequested) return;
+            c.improveRequested = false;
+        }
+    }
+
     public class WorkGiver_ImproveThis : WorkGiver_Scanner {
         private static JobDef ImproveThisJobDef = DefDatabase<JobDef>.GetNamed("Improve");
 
@@ -64,7 +153,7 @@ namespace RimWorld___Improve_This {
                 return null;
             }
             // needs work done
-            if (!GenConstruct.CanConstruct(t, pawn, checkSkills: true, forced))
+            if (!GenConstruct.CanConstruct(t, pawn, WorkTypeDefOf.Construction, forced))
                 return null;
             Job j = JobMaker.MakeJob(ImproveThisJobDef, t);
             if (j.TryMakePreToilReservations(pawn, false)) return j;
@@ -119,9 +208,6 @@ namespace RimWorld___Improve_This {
     }
 
     public class ImproveThisComp : ThingComp, IThingHolder, IConstructible {
-        // TODO: store items
-        // TODO: handle work
-
         // IThingHolder
 
         public void GetChildHolders(List<IThingHolder> outChildren) {
@@ -161,13 +247,26 @@ namespace RimWorld___Improve_This {
         public float WorkToBuild => parent.def.GetStatValueAbstract(StatDefOf.WorkToBuild, parent.Stuff);
         public float WorkLeft => WorkToBuild - workDone;
 
-        public bool improveRequested;
+        private bool _IMPROVEREQ;
+        public bool improveRequested {
+            get => _IMPROVEREQ;
+            set {
+                if (value == false && _IMPROVEREQ == true) {
+                    GetDirectlyHeldThings().TryDropAll(parent.Position, parent.Map, ThingPlaceMode.Near);
+                    parent.Map.designationManager.TryRemoveDesignationOn(parent, Designator_ImproveThis.ImproveDesignationDef);
+                }
+                if (value == true && _IMPROVEREQ == false) {
+                    parent.Map.designationManager.AddDesignation(new Designation(parent, Designator_ImproveThis.ImproveDesignationDef));
+                }
+                _IMPROVEREQ = value;
+            }
+        }
 
         // everything else
 
         public override void PostExposeData() {
             base.PostExposeData();
-            Scribe_Values.Look(ref improveRequested, "improve", false);
+            Scribe_Values.Look(ref _IMPROVEREQ, "improve", false);
             Scribe_Values.Look(ref workDone, "workDone", 0f);
             Scribe_Deep.Look(ref contents, "contents", this);
         }
@@ -175,10 +274,10 @@ namespace RimWorld___Improve_This {
         public override string CompInspectStringExtra() {
             System.Text.StringBuilder str = new System.Text.StringBuilder();
             str.Append(base.CompInspectStringExtra());
-            if (!improveRequested) return str.ToString();
+            if (!improveRequested && !GetDirectlyHeldThings().Any) return str.ToString();
             str.AppendLineIfNotEmpty();
 
-            str.AppendLine("ContainedResources".Translate() + ":");
+            str.Append("ContainedResources".Translate() + ":");
             List<ThingDefCountClass> list = parent.def.CostListAdjusted(parent.Stuff);
             List<ThingDefCountClass> needed = MaterialsNeeded();
             float returned = parent.def.resourcesFractionWhenDeconstructed;
@@ -192,9 +291,13 @@ namespace RimWorld___Improve_This {
                     if (item.thingDef == need.thingDef) num -= item.count;
                 }
                 if (num < needCount) satisfied = false;
-                str.AppendLine((need.thingDef.LabelCap + ": ") + num + " / " + needCount);
+                str.AppendLine();
+                str.Append((need.thingDef.LabelCap + ": ") + num + " / " + needCount);
             }
-            if (satisfied) str.AppendLine("WorkLeft".Translate() + ": " + UnityEngine.Mathf.CeilToInt(WorkLeft / 60f));
+            if (satisfied) {
+                str.AppendLine();
+                str.Append("WorkLeft".Translate() + ": " + UnityEngine.Mathf.CeilToInt(WorkLeft / 60f));
+            }
 
             return str.ToString();
         }
@@ -213,13 +316,7 @@ namespace RimWorld___Improve_This {
             Command_Toggle cmd = new Command_Toggle();
             cmd.isActive = delegate() { return improveRequested; };
             cmd.toggleAction = delegate() {
-                if (improveRequested) {
-                    improveRequested = false;
-                    GetDirectlyHeldThings().TryDropAll(parent.Position, parent.Map, ThingPlaceMode.Near);
-                }
-                else {
-                    improveRequested = true;
-                }
+                improveRequested = !improveRequested;
             };
             cmd.defaultLabel = "ImproveLabel".Translate();
             cmd.defaultDesc = "ImproveDesc".Translate();
@@ -237,8 +334,7 @@ namespace RimWorld___Improve_This {
             }
             QualityCategory q = QualityUtility.GenerateQualityCreatedByPawn(worker, SkillDefOf.Construction);
             if (q.CompareTo(compQuality.Quality) <= 0) {
-                Log.Message("ImproveThis on " + parent.Label + "failed: " + q + " was not an improvement over " + compQuality.Quality + ".");
-                MoteMaker.ThrowText(parent.DrawPos, parent.Map, "MessageQualityTooLow".Translate(q.GetLabel()), 6f);
+                MoteMaker.ThrowText(parent.DrawPos, parent.Map, "MessageQualityTooLow".Translate(q.GetLabel().CapitalizeFirst()), 6f);
                 return;
             }
             compQuality.SetQuality(q, ArtGenerationContext.Colony);
@@ -261,6 +357,11 @@ namespace RimWorld___Improve_This {
             if (parent.Faction == Faction.OfPlayer && WorkToBuild > 1400f) {
                 Messages.Message("MessageConstructionFailed".Translate(parent.Label, worker.LabelShort, worker.Named("WORKER")), new TargetInfo(parent.Position, map), MessageTypeDefOf.NegativeEvent);
             }
+        }
+
+        public override void PostDestroy(DestroyMode mode, Map previousMap) {
+            base.PostDestroy(mode, previousMap);
+            if (mode == DestroyMode.Deconstruct) GetDirectlyHeldThings().TryDropAll(parent.Position, parent.Map, ThingPlaceMode.Near);
         }
     }
 }
