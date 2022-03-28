@@ -97,6 +97,7 @@ namespace RimWorld___Improve_This {
     public class WorkGiver_ImproveThis : WorkGiver_Scanner {
         public static WorkTypeDef ImproveWorkType = DefDatabase<WorkTypeDef>.GetNamed("Improving");
 
+        private static JobDef ImproveThisHaulJobDef = DefDatabase<JobDef>.GetNamed("ImproveHaul");
         private static JobDef ImproveThisJobDef = DefDatabase<JobDef>.GetNamed("Improve");
 
         public override ThingRequest PotentialWorkThingRequest => ThingRequest.ForGroup(ThingRequestGroup.BuildingArtificial);
@@ -142,7 +143,7 @@ namespace RimWorld___Improve_This {
                     if (pawn.Map.itemAvailability.ThingsAvailableAnywhere(mat, pawn)) {
                         Thing found = GenClosest.ClosestThingReachable(pawn.Position, pawn.Map, ThingRequest.ForDef(mat.thingDef), PathEndMode.ClosestTouch, TraverseParms.For(pawn), 9999f, (Thing r) => ResourceValidator(pawn, mat, r));
                         if (found != null) {
-                            Job job = JobMaker.MakeJob(JobDefOf.HaulToContainer);
+                            Job job = JobMaker.MakeJob(ImproveThisHaulJobDef);
                             job.targetA = found;
                             job.targetB = t;
                             job.count = mat.count;
@@ -173,6 +174,82 @@ namespace RimWorld___Improve_This {
             Job j = JobMaker.MakeJob(ImproveThisJobDef, t);
             if (j.TryMakePreToilReservations(pawn, false)) return j;
             return null;
+        }
+    }
+
+    public class JobDriver_HaulToImproveThisContainer : JobDriver {
+        // special version of HaulToContainer to account for this case
+        public Thing ThingToCarry => (Thing)job.GetTarget(TargetIndex.A);
+        public Thing Container => (Thing)job.GetTarget(TargetIndex.B);
+
+        public override string GetReport()
+        {
+            Thing thing = null;
+            thing = ((pawn.CurJob != job || pawn.carryTracker.CarriedThing == null) ? base.TargetThingA : pawn.carryTracker.CarriedThing);
+            if (thing == null || !job.targetB.HasThing)
+            {
+                return "ReportHaulingUnknown".Translate();
+            }
+            return "ReportHaulingTo".Translate(thing.Label, job.targetB.Thing.LabelShort.Named("DESTINATION"), thing.Named("THING"));
+        }
+
+        public override bool TryMakePreToilReservations(bool errorOnFailed)
+        {
+            if (!pawn.Reserve(job.GetTarget(TargetIndex.A), job, 1, -1, null, errorOnFailed)) return false;
+            if (!pawn.Reserve(job.GetTarget(TargetIndex.B), job, 1, -1, null, errorOnFailed)) return false;
+            pawn.ReserveAsManyAsPossible(job.GetTargetQueue(TargetIndex.A), job);
+            pawn.ReserveAsManyAsPossible(job.GetTargetQueue(TargetIndex.B), job);
+            return true;
+        }
+
+        protected override IEnumerable<Toil> MakeNewToils()
+        {
+            // this collects all required materials and dumps them into B
+            this.FailOnDestroyedOrNull(TargetIndex.A);
+            this.FailOnDestroyedNullOrForbidden(TargetIndex.B);
+            this.FailOn(() => !Container.TryGetComp<ImproveThisComp>().improveRequested);
+            Toil getToHaulTarget = Toils_Goto.GotoThing(TargetIndex.A, PathEndMode.ClosestTouch).FailOnSomeonePhysicallyInteracting(TargetIndex.A);
+            Toil uninstallIfMinifiable = Toils_Construct.UninstallIfMinifiable(TargetIndex.A).FailOnSomeonePhysicallyInteracting(TargetIndex.A);
+            Toil startCarryingThing = Toils_Haul.StartCarryThing(TargetIndex.A, putRemainderInQueue: false, subtractNumTakenFromJobCount: true);
+            Toil jumpIfAlsoCollectingNextTarget = Toils_Haul.JumpIfAlsoCollectingNextTargetInQueue(getToHaulTarget, TargetIndex.A);
+            Toil carryToContainer = Toils_Haul.CarryHauledThingToContainer();
+            yield return Toils_Jump.JumpIf(jumpIfAlsoCollectingNextTarget, () => pawn.IsCarryingThing(ThingToCarry));
+            yield return getToHaulTarget;
+            yield return uninstallIfMinifiable;
+            yield return startCarryingThing;
+            yield return jumpIfAlsoCollectingNextTarget;
+            yield return carryToContainer;
+            yield return CustomDepositHauledThingInContainer(TargetIndex.B);
+        }
+
+        private Toil CustomDepositHauledThingInContainer(TargetIndex containerInd) {
+            Toil toil = new Toil();
+            toil.initAction = delegate
+            {
+                Pawn actor = toil.actor;
+                Job curJob = actor.jobs.curJob;
+                if (actor.carryTracker.CarriedThing == null)
+                {
+                    Log.Error(string.Concat(actor, " tried to place hauled thing in container but is not hauling anything."));
+                    return;
+                }
+                Thing thing = curJob.GetTarget(containerInd).Thing;
+                ImproveThisComp comp = thing.TryGetComp<ImproveThisComp>();
+                if (comp == null || !comp.improveRequested) {
+                    Log.Error(string.Concat(actor, " tried to place hauled thing into ", thing.Label, " but it is not accepting improvements."));
+                    return;
+                }
+                ThingOwner thingOwner = comp.GetDirectlyHeldThings();
+                if (thingOwner == null)
+                {
+                    Log.Error("Could not deposit hauled thing in container: " + curJob.GetTarget(containerInd).Thing);
+                    return;
+                }
+                int num = actor.carryTracker.CarriedThing.stackCount;
+                num = UnityEngine.Mathf.Min(GenConstruct.AmountNeededByOf((IConstructible)comp, actor.carryTracker.CarriedThing.def), num);
+                actor.carryTracker.innerContainer.TryTransferToContainer(actor.carryTracker.CarriedThing, thingOwner, num);
+            };
+            return toil;
         }
     }
 
