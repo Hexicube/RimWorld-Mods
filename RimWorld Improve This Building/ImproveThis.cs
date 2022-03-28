@@ -302,15 +302,50 @@ namespace RimWorld___Improve_This {
         }
     }
 
-    public class ImproveThisComp : ThingComp, IThingHolder, IConstructible {
-        // IThingHolder
-
-        public void GetChildHolders(List<IThingHolder> outChildren) {
-            ThingOwnerUtility.AppendThingHoldersFromThings(outChildren, GetDirectlyHeldThings());
+    public class RestrictedThingOwner : ThingOwner<Thing> {
+        private bool OVERRIDE = false;
+        private ImproveThisComp ImproveComp;
+        public RestrictedThingOwner(ImproveThisComp tc) : base(null, false) {
+            ImproveComp = tc;
         }
-        public ThingOwner contents;
+
+        public RestrictedThingOwner(ThingOwner<Thing> old, ImproveThisComp tc) : base(null, false) {
+            // force the contents in
+            OVERRIDE = true;
+            old.TryTransferAllToContainer(this);
+            OVERRIDE = false;
+        }
+
+        public override int GetCountCanAccept(Thing item, bool canMergeWithExistingStacks = true)
+        {
+            if (!OVERRIDE) {
+                if (!ImproveComp.improveRequested) return 0;
+                ThingDefCountClass tdcc = ImproveComp.MaterialsNeeded().Find(tdc => tdc.thingDef == item.def);
+                if (tdcc == null) return 0;
+                return tdcc.count;
+            }
+            return base.GetCountCanAccept(item, canMergeWithExistingStacks);
+        }
+
+        public override int TryAdd(Thing item, int count, bool canMergeWithExistingStacks = true)
+        {
+            if (!OVERRIDE && !ImproveComp.improveRequested) return 0;
+            return base.TryAdd(item, count, canMergeWithExistingStacks);
+        }
+
+        public override bool TryAdd(Thing item, bool canMergeWithExistingStacks = true)
+        {
+            if (!OVERRIDE && !ImproveComp.improveRequested) return false;
+            return base.TryAdd(item, canMergeWithExistingStacks);
+        }
+    }
+
+    public class ImproveThisComp : ThingComp, IConstructible {
+        // storage
+
+        private ThingOwner contents;
         public ThingOwner GetDirectlyHeldThings() {
-            if (contents == null) contents = new ThingOwner<Thing>(this, false);
+            if (contents == null) contents = new RestrictedThingOwner(this);
             return contents;
         }
 
