@@ -124,7 +124,7 @@ namespace RimWorld___Improve_This {
             {
                 return false;
             }
-            if (!pawn.CanReserve(th))
+            if (!pawn.HasReserved(th) && !pawn.CanReserve(th))
             {
                 return false;
             }
@@ -148,7 +148,7 @@ namespace RimWorld___Improve_This {
                             job.targetB = t;
                             job.count = mat.count;
                             job.haulMode = HaulMode.ToContainer;
-                            return job;
+                            if (pawn.HasReserved(job.targetB) || pawn.CanReserve(job.targetB, ignoreOtherReservations: forced)) return job;
                         }
                     }
                 }
@@ -172,7 +172,7 @@ namespace RimWorld___Improve_This {
                 }
             }
             Job j = JobMaker.MakeJob(ImproveThisJobDef, t);
-            if (j.TryMakePreToilReservations(pawn, false)) return j;
+            if (pawn.HasReserved(j.targetA) || pawn.CanReserve(j.targetA, ignoreOtherReservations: forced)) return j;
             return null;
         }
     }
@@ -195,10 +195,15 @@ namespace RimWorld___Improve_This {
 
         public override bool TryMakePreToilReservations(bool errorOnFailed)
         {
-            if (!pawn.Reserve(job.GetTarget(TargetIndex.A), job, 1, -1, null, errorOnFailed)) return false;
-            if (!pawn.Reserve(job.GetTarget(TargetIndex.B), job, 1, -1, null, errorOnFailed)) return false;
-            pawn.ReserveAsManyAsPossible(job.GetTargetQueue(TargetIndex.A), job);
-            pawn.ReserveAsManyAsPossible(job.GetTargetQueue(TargetIndex.B), job);
+            if (!pawn.HasReserved(job.targetA, job)) {
+                if (!pawn.Reserve(job.targetA, job, 1, -1, null, errorOnFailed)) return false;
+            }
+            if (!pawn.HasReserved(job.targetB, job)) {
+                if (!pawn.Reserve(job.targetB, job, 1, -1, null, errorOnFailed)) {
+                    pawn.Map.reservationManager.Release(job.targetA, pawn, job);
+                    return false;
+                }
+            }
             return true;
         }
 
@@ -257,6 +262,7 @@ namespace RimWorld___Improve_This {
         private ImproveThisComp JobTarget => ((Thing)job.GetTarget(TargetIndex.A)).TryGetComp<ImproveThisComp>();
 
         public override bool TryMakePreToilReservations(bool errorOnFailed) {
+            if (pawn.HasReserved(job.targetA, job)) return true;
             return pawn.Reserve(job.targetA, job, 1, -1, null, errorOnFailed);
         }
 
@@ -267,8 +273,12 @@ namespace RimWorld___Improve_This {
                 GenClamor.DoClamor(build.actor, 15f, ClamorDefOf.Construction);
             };
             build.tickAction = delegate {
-                Pawn actor = build.actor;
                 ImproveThisComp comp = JobTarget;
+                if (!comp.improveRequested) {
+                    ReadyForNextToil();
+                    return;
+                }
+                Pawn actor = build.actor;
                 actor.skills.Learn(SkillDefOf.Construction, 0.25f);
                 float speed = actor.GetStatValue(StatDefOf.ConstructionSpeed) * 1.7f;
                 speed *= comp.parent.Stuff.GetStatValueAbstract(StatDefOf.ConstructionSpeedFactor);
@@ -298,6 +308,9 @@ namespace RimWorld___Improve_This {
             build.defaultCompleteMode = ToilCompleteMode.Delay;
             build.defaultDuration = 5000;
             build.activeSkill = () => SkillDefOf.Construction;
+            build.finishActions.Add(delegate {
+                pawn.Map.reservationManager.Release(job.targetA, pawn, job);
+            });
             yield return build;
         }
     }
