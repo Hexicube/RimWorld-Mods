@@ -164,11 +164,13 @@ namespace RimWorld___Improve_This {
                 return null;
             // if the building is already Masterwork, make sure the pawn is inspired
             // pawns CANNOT make Legendary things normally
-            CompQuality q = t.TryGetComp<CompQuality>();
-            if (q.Quality == QualityCategory.Masterwork) {
-                if (pawn.InspirationDef != InspirationDefOf.Inspired_Creativity) {
-                    JobFailReason.Is("ImproveInspireNeeded".Translate());
-                    return null;
+            if (c.WorkLeft <= 120f) {
+                CompQuality q = t.TryGetComp<CompQuality>();
+                if (q.Quality == QualityCategory.Masterwork) {
+                    if (pawn.InspirationDef != InspirationDefOf.Inspired_Creativity) {
+                        JobFailReason.Is("ImproveInspireNeeded".Translate());
+                        return null;
+                    }
                 }
             }
             Job j = JobMaker.MakeJob(ImproveThisJobDef, t);
@@ -272,28 +274,35 @@ namespace RimWorld___Improve_This {
             build.initAction = delegate {
                 GenClamor.DoClamor(build.actor, 15f, ClamorDefOf.Construction);
             };
+            CompQuality q = JobTarget.parent.TryGetComp<CompQuality>();
             build.tickAction = delegate {
-                ImproveThisComp comp = JobTarget;
-                if (!comp.improveRequested) {
+                if (!JobTarget.improveRequested) {
                     ReadyForNextToil();
                     return;
                 }
-                Pawn actor = build.actor;
-                actor.skills.Learn(SkillDefOf.Construction, 0.25f);
-                float speed = actor.GetStatValue(StatDefOf.ConstructionSpeed) * 1.7f;
-                speed *= comp.parent.Stuff.GetStatValueAbstract(StatDefOf.ConstructionSpeedFactor);
-                float workToBuild = comp.WorkToBuild;
-                if (actor.Faction == Faction.OfPlayer) {
-                    float statValue = actor.GetStatValue(StatDefOf.ConstructSuccessChance);
-                    if (!TutorSystem.TutorialMode && Rand.Value < 1f - UnityEngine.Mathf.Pow(statValue, speed / workToBuild)) {
-                        comp.FailConstruction(actor);
+                if (q.Quality == QualityCategory.Masterwork) {
+                    // do not let pawns improve without creativity
+                    if (JobTarget.WorkLeft <= 120f && pawn.InspirationDef != InspirationDefOf.Inspired_Creativity) {
                         ReadyForNextToil();
                         return;
                     }
                 }
-                comp.workDone += speed;
-                if (comp.WorkLeft <= 0) {
-                    comp.CompleteConstruction(actor);
+                Pawn actor = build.actor;
+                actor.skills.Learn(SkillDefOf.Construction, 0.25f);
+                float speed = actor.GetStatValue(StatDefOf.ConstructionSpeed) * 1.7f;
+                speed *= JobTarget.parent.Stuff.GetStatValueAbstract(StatDefOf.ConstructionSpeedFactor);
+                float workToBuild = JobTarget.WorkToBuild;
+                if (actor.Faction == Faction.OfPlayer) {
+                    float statValue = actor.GetStatValue(StatDefOf.ConstructSuccessChance);
+                    if (!TutorSystem.TutorialMode && Rand.Value < 1f - UnityEngine.Mathf.Pow(statValue, speed / workToBuild)) {
+                        JobTarget.FailConstruction(actor);
+                        ReadyForNextToil();
+                        return;
+                    }
+                }
+                JobTarget.workDone += speed;
+                if (JobTarget.WorkLeft <= 0) {
+                    JobTarget.CompleteConstruction(actor);
                     ReadyForNextToil();
                 }
             };
@@ -301,9 +310,6 @@ namespace RimWorld___Improve_This {
             build.FailOnDespawnedNullOrForbidden(TargetIndex.A);
             build.FailOnCannotTouch(TargetIndex.A, PathEndMode.Touch);
             build.FailOn(() => !GenConstruct.CanConstruct(JobTarget.parent, pawn));
-            CompQuality q = JobTarget.parent.TryGetComp<CompQuality>();
-            if (q.Quality == QualityCategory.Masterwork)
-                build.FailOn(() => pawn.InspirationDef != InspirationDefOf.Inspired_Creativity);
             build.WithProgressBar(TargetIndex.A, () => (float)JobTarget.workDone / (float)JobTarget.WorkToBuild);
             build.defaultCompleteMode = ToilCompleteMode.Delay;
             build.defaultDuration = 5000;
@@ -440,6 +446,10 @@ namespace RimWorld___Improve_This {
             if (satisfied) {
                 str.AppendLine();
                 str.Append("WorkLeft".Translate() + ": " + UnityEngine.Mathf.CeilToInt(WorkLeft / 60f));
+                if (parent.GetComp<CompQuality>().Quality == QualityCategory.Masterwork) {
+                    str.AppendLine();
+                    str.Append("NeedsCreative".Translate());
+                }
             }
 
             return str.ToString();
