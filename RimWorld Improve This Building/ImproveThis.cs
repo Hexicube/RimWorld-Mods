@@ -469,7 +469,8 @@ namespace RimWorld___Improve_This {
                 str.Append("WorkLeft".Translate() + ": " + UnityEngine.Mathf.CeilToInt(WorkLeft / 60f));
                 if (parent.GetComp<CompQuality>().Quality == QualityCategory.Masterwork) {
                     str.AppendLine();
-                    str.Append("NeedsCreative".Translate());
+                    if (ModsConfig.IdeologyActive) str.Append("NeedsCreativeOrRole".Translate());
+                    else str.Append("NeedsCreative".Translate());
                 }
             }
 
