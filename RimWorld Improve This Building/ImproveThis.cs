@@ -168,8 +168,19 @@ namespace RimWorld___Improve_This {
                 CompQuality q = t.TryGetComp<CompQuality>();
                 if (q.Quality == QualityCategory.Masterwork) {
                     if (pawn.InspirationDef != InspirationDefOf.Inspired_Creativity) {
-                        JobFailReason.Is("ImproveInspireNeeded".Translate());
-                        return null;
+                        bool ideoCheck = false;
+                        if (ModsConfig.IdeologyActive && pawn.Ideo != null) {
+                            Precept_Role role = pawn.Ideo.GetRole(pawn);
+                            if (role != null && role.def.roleEffects != null) {
+                                RoleEffect eff = role.def.roleEffects.FirstOrFallback((RoleEffect e) => e is RoleEffect_ProductionQualityOffset);
+                                if (eff != null) ideoCheck = true;
+                            }
+                        }
+                        if (!ideoCheck) {
+                            if (ModsConfig.IdeologyActive) JobFailReason.Is("ImproveInspireOrRoleNeeded".Translate());
+                            else JobFailReason.Is("ImproveInspireNeeded".Translate());
+                            return null;
+                        }
                     }
                 }
             }
@@ -283,8 +294,18 @@ namespace RimWorld___Improve_This {
                 if (q.Quality == QualityCategory.Masterwork) {
                     // do not let pawns improve without creativity
                     if (JobTarget.WorkLeft <= 120f && pawn.InspirationDef != InspirationDefOf.Inspired_Creativity) {
-                        ReadyForNextToil();
-                        return;
+                        bool ideoCheck = false;
+                        if (ModsConfig.IdeologyActive && pawn.Ideo != null) {
+                            Precept_Role role = pawn.Ideo.GetRole(pawn);
+                            if (role != null && role.def.roleEffects != null) {
+                                RoleEffect eff = role.def.roleEffects.FirstOrFallback((RoleEffect e) => e is RoleEffect_ProductionQualityOffset);
+                                if (eff != null) ideoCheck = true;
+                            }
+                        }
+                        if (!ideoCheck) {
+                            ReadyForNextToil();
+                            return;
+                        }
                     }
                 }
                 Pawn actor = build.actor;
