@@ -37,9 +37,9 @@ namespace RimWorld___No_Passionate_Skill_Decay
             list.Begin(canvas);
             list.Label("LevelLimits".Translate());
             list.ColumnWidth = 300f;
-            list.TextFieldNumericLabeled(  "NoPassion".Translate(), ref   NoPassionCutoff, ref   NoPassionEntry, 1, 20);
-            list.TextFieldNumericLabeled("HalfPassion".Translate(), ref HalfPassionCutoff, ref HalfPassionEntry, 1, 20);
-            list.TextFieldNumericLabeled("FullPassion".Translate(), ref FullPassionCutoff, ref FullPassionEntry, 1, 20);
+            list.TextFieldNumericLabeled(  "NoPassion".Translate(), ref   NoPassionCutoff, ref   NoPassionEntry, 1);
+            list.TextFieldNumericLabeled("HalfPassion".Translate(), ref HalfPassionCutoff, ref HalfPassionEntry, 1);
+            list.TextFieldNumericLabeled("FullPassion".Translate(), ref FullPassionCutoff, ref FullPassionEntry, 1);
             list.ColumnWidth = 800f;
             list.Label("LevelLimitsNote".Translate());
             list.Gap(20);
