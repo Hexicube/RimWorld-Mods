@@ -5,6 +5,135 @@ using Verse;
 using Verse.AI;
 
 namespace RimWorld___Improve_This {
+    public class ImproveThis_Mod : Mod {
+        public static ImproveThis_Settings Settings;
+        public ImproveThis_Mod(ModContentPack content) : base(content) {
+            Settings = GetSettings<ImproveThis_Settings>();
+        }
+
+        public override string SettingsCategory() {
+            return "Improve This";
+        }
+
+        public override void DoSettingsWindowContents(UnityEngine.Rect canvas) {
+            Settings.DoWindowsContents(canvas);
+        }
+    }
+
+    public class ImproveThis_Settings : ModSettings {
+        // defaults are 5%
+        private int       AwfulSkillReq = 0;
+        private int        PoorSkillReq = 0;
+        private int      NormalSkillReq = 3;
+        private int        GoodSkillReq = 8;
+        private int  ExcellentSkillReq = 18;
+        private int MasterworkSkillReq = 21;
+        private string[] SkillEntry = new string[6];
+
+        public int GetSkillReq(QualityCategory quality, bool inspired, bool production) {
+            int q = (int)quality;
+            if (inspired) q -= 2;
+            if (production) q--;
+            if (q < 0) q = 0;
+
+            if (q == 0) return AwfulSkillReq;
+            if (q == 1) return PoorSkillReq;
+            if (q == 2) return NormalSkillReq;
+            if (q == 3) return GoodSkillReq;
+            if (q == 4) return ExcellentSkillReq;
+            return MasterworkSkillReq;
+        }
+
+        public void DoWindowsContents(UnityEngine.Rect canvas) {
+            Listing_Standard list = new Listing_Standard { ColumnWidth = 300f };
+            list.Begin(canvas);
+
+            list.Label("IT_SkillReq".Translate());
+            list.TextFieldNumericLabeled(      "QualityCategory_Poor".Translate(), ref      AwfulSkillReq, ref SkillEntry[0]);
+            list.TextFieldNumericLabeled(    "QualityCategory_Normal".Translate(), ref       PoorSkillReq, ref SkillEntry[1]);
+            list.TextFieldNumericLabeled(      "QualityCategory_Good".Translate(), ref     NormalSkillReq, ref SkillEntry[2]);
+            list.TextFieldNumericLabeled( "QualityCategory_Excellent".Translate(), ref       GoodSkillReq, ref SkillEntry[3]);
+            list.TextFieldNumericLabeled("QualityCategory_Masterwork".Translate(), ref  ExcellentSkillReq, ref SkillEntry[4]);
+            list.TextFieldNumericLabeled( "QualityCategory_Legendary".Translate(), ref MasterworkSkillReq, ref SkillEntry[5]);
+            
+            list.Gap(20);
+
+            list.Label("IT_SkillTrials".Translate());
+            list.TextFieldNumericLabeled("IT_TrialOdds".Translate(), ref Cutoff, ref CutoffStr, 0, 1);
+            if (list.ButtonText("IT_DoTrials".Translate())) DoTrials(Cutoff);
+
+            list.End();
+        }
+
+        public override void ExposeData() {
+            Scribe_Values.Look(ref      AwfulSkillReq, "awfulSkill",  0, false); SkillEntry[0] =      AwfulSkillReq.ToString();
+            Scribe_Values.Look(ref       PoorSkillReq,  "poorSkill",  0, false); SkillEntry[1] =       PoorSkillReq.ToString();
+            Scribe_Values.Look(ref     NormalSkillReq,  "normSkill",  3, false); SkillEntry[2] =     NormalSkillReq.ToString();
+            Scribe_Values.Look(ref       GoodSkillReq,  "goodSkill",  8, false); SkillEntry[3] =       GoodSkillReq.ToString();
+            Scribe_Values.Look(ref  ExcellentSkillReq, "excelSkill", 18, false); SkillEntry[4] =  ExcellentSkillReq.ToString();
+            Scribe_Values.Look(ref MasterworkSkillReq,  "mastSkill", 21, false); SkillEntry[5] = MasterworkSkillReq.ToString();
+        }
+
+        private int[,] CurTrials = new int[21,7];
+        private float Cutoff = 0.05f; private string CutoffStr = "0.05";
+        private void DoTrials() {
+            //10mil trials at each pawn level
+            for (int a = 0; a < 1000000; a++) {
+                for (int l = 0; l <= 20; l++) {
+                    int v = (int)QualityUtility.GenerateQualityCreatedByPawn(l, false);
+                    CurTrials[l,v]++;
+                }
+            }
+        }
+        public void DoTrials(float cutoff) {
+            // do first trials if none
+            int sum = 0;
+            for (int a = 0; a < 7; a++) sum += CurTrials[0,a];
+            if (sum == 0) DoTrials();
+            // work out cutoff for each
+            AwfulSkillReq = 0;
+            PoorSkillReq = 0;
+            NormalSkillReq = 0;
+            GoodSkillReq = 0;
+            ExcellentSkillReq = 0;
+            MasterworkSkillReq = 0;
+            for (int l = 20; l >= 0; l--) {
+                sum = 0;
+                for (int a = 0; a < 7; a++) sum += CurTrials[l,a];
+                double pct = (double)CurTrials[l,6] / (double)sum;
+                if (MasterworkSkillReq < l) {
+                    if (pct < cutoff) MasterworkSkillReq = l + 1;
+                }
+                pct += (double)CurTrials[l,5] / (double)sum;
+                if (ExcellentSkillReq < l) {
+                    if (pct < cutoff) ExcellentSkillReq = l + 1;
+                }
+                pct += (double)CurTrials[l,4] / (double)sum;
+                if (GoodSkillReq < l) {
+                    if (pct < cutoff) GoodSkillReq = l + 1;
+                }
+                pct += (double)CurTrials[l,3] / (double)sum;
+                if (NormalSkillReq < l) {
+                    if (pct < cutoff) NormalSkillReq = l + 1;
+                }
+                pct += (double)CurTrials[l,2] / (double)sum;
+                if (PoorSkillReq < l) {
+                    if (pct < cutoff) PoorSkillReq = l + 1;
+                }
+                pct += (double)CurTrials[l,1] / (double)sum;
+                if (AwfulSkillReq < l) {
+                    if (pct < cutoff) AwfulSkillReq = l + 1;
+                }
+            }
+            SkillEntry[0] =      AwfulSkillReq.ToString();
+            SkillEntry[1] =       PoorSkillReq.ToString();
+            SkillEntry[2] =     NormalSkillReq.ToString();
+            SkillEntry[3] =       GoodSkillReq.ToString();
+            SkillEntry[4] =  ExcellentSkillReq.ToString();
+            SkillEntry[5] = MasterworkSkillReq.ToString();
+        }
+    }
+
     public class Designator_ImproveThis : Designator {
         public static DesignationDef ImproveDesignationDef = DefDatabase<DesignationDef>.GetNamed("ImproveThis", true);
 
@@ -162,26 +291,29 @@ namespace RimWorld___Improve_This {
             }
             if (!GenConstruct.CanConstruct(t, pawn, true, forced))
                 return null;
-            // if the building is already Masterwork, make sure the pawn is inspired
-            // pawns CANNOT make Legendary things normally
+            // make sure the pawn is capable according to settings
             if (c.WorkLeft <= 120f) {
                 CompQuality q = t.TryGetComp<CompQuality>();
-                if (q.Quality == QualityCategory.Masterwork) {
-                    if (pawn.InspirationDef != InspirationDefOf.Inspired_Creativity) {
-                        bool ideoCheck = false;
-                        if (ModsConfig.IdeologyActive && pawn.Ideo != null) {
-                            Precept_Role role = pawn.Ideo.GetRole(pawn);
-                            if (role != null && role.def.roleEffects != null) {
-                                RoleEffect eff = role.def.roleEffects.FirstOrFallback((RoleEffect e) => e is RoleEffect_ProductionQualityOffset);
-                                if (eff != null) ideoCheck = true;
-                            }
-                        }
-                        if (!ideoCheck) {
-                            if (ModsConfig.IdeologyActive) JobFailReason.Is("ImproveInspireOrRoleNeeded".Translate());
-                            else JobFailReason.Is("ImproveInspireNeeded".Translate());
-                            return null;
-                        }
+                int skill = pawn.skills.GetSkill(SkillDefOf.Construction).Level;
+                bool inspired = pawn.InspirationDef == InspirationDefOf.Inspired_Creativity;
+                bool production = false;
+                if (ModsConfig.IdeologyActive && pawn.Ideo != null) {
+                    Precept_Role role = pawn.Ideo.GetRole(pawn);
+                    if (role != null && role.def.roleEffects != null) {
+                        RoleEffect eff = role.def.roleEffects.FirstOrFallback((RoleEffect e) => e is RoleEffect_ProductionQualityOffset);
+                        if (eff != null) production = true;
                     }
+                }
+                int skillReq = ImproveThis_Mod.Settings.GetSkillReq(q.Quality, inspired, production);
+                if (skillReq > skill) {
+                    int skillUpperReq = ImproveThis_Mod.Settings.GetSkillReq(q.Quality, true, ModsConfig.IdeologyActive);
+                    if (skillUpperReq > skill) {
+                        if (ModsConfig.IdeologyActive) JobFailReason.Is("ImproveSkillInspireOrRoleNeeded".Translate(skillReq.ToString(), skillUpperReq.ToString()));
+                        else JobFailReason.Is("ImproveSkillInspireNeeded".Translate(skillReq.ToString(), skillUpperReq.ToString()));
+                    }
+                    else if (ModsConfig.IdeologyActive) JobFailReason.Is("ImproveInspireOrRoleNeeded".Translate(skillReq.ToString()));
+                    else JobFailReason.Is("ImproveInspireNeeded".Translate(skillReq.ToString()));
+                    return null;
                 }
             }
             Job j = JobMaker.MakeJob(ImproveThisJobDef, t);
@@ -291,24 +423,24 @@ namespace RimWorld___Improve_This {
                     ReadyForNextToil();
                     return;
                 }
-                if (q.Quality == QualityCategory.Masterwork) {
-                    // do not let pawns improve without creativity
-                    if (JobTarget.WorkLeft <= 120f && pawn.InspirationDef != InspirationDefOf.Inspired_Creativity) {
-                        bool ideoCheck = false;
-                        if (ModsConfig.IdeologyActive && pawn.Ideo != null) {
-                            Precept_Role role = pawn.Ideo.GetRole(pawn);
-                            if (role != null && role.def.roleEffects != null) {
-                                RoleEffect eff = role.def.roleEffects.FirstOrFallback((RoleEffect e) => e is RoleEffect_ProductionQualityOffset);
-                                if (eff != null) ideoCheck = true;
-                            }
-                        }
-                        if (!ideoCheck) {
-                            ReadyForNextToil();
-                            return;
+                Pawn actor = build.actor;
+                if (JobTarget.WorkLeft <= 120f) {
+                    int skill = actor.skills.GetSkill(SkillDefOf.Construction).Level;
+                    bool inspired = actor.InspirationDef == InspirationDefOf.Inspired_Creativity;
+                    bool production = false;
+                    if (ModsConfig.IdeologyActive && pawn.Ideo != null) {
+                        Precept_Role role = pawn.Ideo.GetRole(pawn);
+                        if (role != null && role.def.roleEffects != null) {
+                            RoleEffect eff = role.def.roleEffects.FirstOrFallback((RoleEffect e) => e is RoleEffect_ProductionQualityOffset);
+                            if (eff != null) production = true;
                         }
                     }
+                    int skillReq = ImproveThis_Mod.Settings.GetSkillReq(q.Quality, inspired, production);
+                    if (skillReq > skill) {
+                        ReadyForNextToil();
+                        return;
+                    }
                 }
-                Pawn actor = build.actor;
                 actor.skills.Learn(SkillDefOf.Construction, 0.25f);
                 float speed = actor.GetStatValue(StatDefOf.ConstructionSpeed) * 1.7f;
                 speed *= JobTarget.parent.Stuff.GetStatValueAbstract(StatDefOf.ConstructionSpeedFactor);
@@ -467,10 +599,11 @@ namespace RimWorld___Improve_This {
             if (satisfied) {
                 str.AppendLine();
                 str.Append("WorkLeft".Translate() + ": " + UnityEngine.Mathf.CeilToInt(WorkLeft / 60f));
-                if (parent.GetComp<CompQuality>().Quality == QualityCategory.Masterwork) {
+                int skillReq = ImproveThis_Mod.Settings.GetSkillReq(parent.GetComp<CompQuality>().Quality, false, false);
+                if (skillReq > 0) {
                     str.AppendLine();
-                    if (ModsConfig.IdeologyActive) str.Append("NeedsCreativeOrRole".Translate());
-                    else str.Append("NeedsCreative".Translate());
+                    if (ModsConfig.IdeologyActive) str.Append("NeedsCreativeOrRole".Translate(skillReq.ToString()));
+                    else str.Append("NeedsCreative".Translate(skillReq.ToString()));
                 }
             }
 
