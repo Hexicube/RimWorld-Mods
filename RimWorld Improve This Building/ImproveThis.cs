@@ -77,7 +77,7 @@ namespace RimWorld___Improve_This {
         private int[,] CurTrials = new int[21,7];
         private float Cutoff = 0.05f; private string CutoffStr = "0.05";
         private void DoTrials() {
-            //10mil trials at each pawn level
+            //1mil trials at each pawn level
             for (int a = 0; a < 1000000; a++) {
                 for (int l = 0; l <= 20; l++) {
                     int v = (int)QualityUtility.GenerateQualityCreatedByPawn(l, false);
@@ -531,7 +531,7 @@ namespace RimWorld___Improve_This {
         public List<ThingDefCountClass> MaterialsNeeded() {
             cachedMaterialsNeeded.Clear();
             float returned = parent.def.resourcesFractionWhenDeconstructed;
-            List<ThingDefCountClass> list = parent.def.CostListAdjusted(parent.Stuff);
+            List<ThingDefCountClass> list = parent.def.CostListAdjusted(parent.Stuff, false);
             for (int i = 0; i < list.Count; i++)
             {
                 ThingDefCountClass thingDefCountClass = list[i];
@@ -580,7 +580,7 @@ namespace RimWorld___Improve_This {
             str.AppendLineIfNotEmpty();
 
             str.Append("ContainedResources".Translate() + ":");
-            List<ThingDefCountClass> list = parent.def.CostListAdjusted(parent.Stuff);
+            List<ThingDefCountClass> list = parent.def.CostListAdjusted(parent.Stuff, false);
             List<ThingDefCountClass> needed = MaterialsNeeded();
             float returned = parent.def.resourcesFractionWhenDeconstructed;
             bool satisfied = true;
