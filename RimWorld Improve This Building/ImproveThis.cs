@@ -443,7 +443,7 @@ namespace RimWorld___Improve_This {
                 }
                 actor.skills.Learn(SkillDefOf.Construction, 0.25f);
                 float speed = actor.GetStatValue(StatDefOf.ConstructionSpeed) * 1.7f;
-                speed *= JobTarget.parent.Stuff.GetStatValueAbstract(StatDefOf.ConstructionSpeedFactor);
+                if (JobTarget.parent.Stuff != null) speed *= JobTarget.parent.Stuff.GetStatValueAbstract(StatDefOf.ConstructionSpeedFactor);
                 float workToBuild = JobTarget.WorkToBuild;
                 if (actor.Faction == Faction.OfPlayer) {
                     float statValue = actor.GetStatValue(StatDefOf.ConstructSuccessChance);
