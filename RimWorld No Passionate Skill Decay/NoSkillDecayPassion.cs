@@ -127,8 +127,29 @@ namespace RimWorld___No_Passionate_Skill_Decay
                     break;
                 }
                 default: {
-                    atLimit = false;
-                    exactlyAtLimit = false;
+                    // unusual skill - assume that LearnRateFactor is somewhat representative of how passionate the pawn is relative to standard ones
+                    // we lerp against the two appropriate values
+                    // assumption: configured cutoffs increase with better passions
+                    // vanilla: 0.35, 1.00, 1.50
+                    float rate = __instance.LearnRateFactor();
+                    int half = NSDPMod.settings.HalfPassionCutoff;
+                    int cutoffEstimate;
+                    if (rate > 1f) {
+                        // at least minor passion
+                        float lerp = (rate - 1f) / 0.5f;
+                        int full = NSDPMod.settings.FullPassionCutoff;
+                        cutoffEstimate = (int)System.Math.Ceiling((float)half + (float)(full - half) * lerp);
+                    }
+                    else {
+                        // worse than minor passion
+                        float lerp = (rate - 0.35f) / 0.65f;
+                        int none = NSDPMod.settings.NoPassionCutoff;
+                        cutoffEstimate = (int)System.Math.Floor((float)none + (float)(half - none) * lerp);
+                    }
+                    if (cutoffEstimate < 0) cutoffEstimate = 0;
+                    else if (cutoffEstimate > 20) cutoffEstimate = 20;
+                    atLimit = level >= cutoffEstimate;
+                    exactlyAtLimit = level == cutoffEstimate;
                     break;
                 }
             }
