@@ -9,6 +9,27 @@ namespace RimWorld___Improve_This {
         public static ImproveThis_Settings Settings;
         public ImproveThis_Mod(ModContentPack content) : base(content) {
             Settings = GetSettings<ImproveThis_Settings>();
+
+            if (!AddedVanillaModifiers) {
+                PawnModifiers.Add(delegate (Pawn pawn) {
+                    if (pawn == null) return -2;
+                    return (pawn.InspirationDef == InspirationDefOf.Inspired_Creativity) ? -2 : 0;
+                });
+                if (ModsConfig.IdeologyActive) {
+                    PawnModifiers.Add(delegate (Pawn pawn) {
+                        if (pawn == null) return -1;
+                        if (pawn.Ideo != null) {
+                            Precept_Role role = pawn.Ideo.GetRole(pawn);
+                            if (role != null && role.def.roleEffects != null) {
+                                RoleEffect eff = role.def.roleEffects.FirstOrFallback((RoleEffect e) => e is RoleEffect_ProductionQualityOffset);
+                                if (eff != null) return -1;
+                            }
+                        }
+                        return 0;
+                    });
+                }
+                AddedVanillaModifiers = true;
+            }
         }
 
         public override string SettingsCategory() {
@@ -18,6 +39,9 @@ namespace RimWorld___Improve_This {
         public override void DoSettingsWindowContents(UnityEngine.Rect canvas) {
             Settings.DoWindowsContents(canvas);
         }
+
+        private static bool AddedVanillaModifiers = false;
+        public static List<System.Func<Pawn, int>> PawnModifiers = new List<System.Func<Pawn, int>>();
     }
 
     public class ImproveThis_Settings : ModSettings {
@@ -30,12 +54,25 @@ namespace RimWorld___Improve_This {
         private int MasterworkSkillReq = 21;
         private string[] SkillEntry = new string[6];
 
-        public int GetSkillReq(QualityCategory quality, bool inspired, bool production) {
+        public int GetSkillReqBase(QualityCategory quality) {
             int q = (int)quality;
-            if (inspired) q -= 2;
-            if (production) q--;
-            if (q < 0) q = 0;
 
+            if (q == 0) return AwfulSkillReq;
+            if (q == 1) return PoorSkillReq;
+            if (q == 2) return NormalSkillReq;
+            if (q == 3) return GoodSkillReq;
+            if (q == 4) return ExcellentSkillReq;
+            return MasterworkSkillReq;
+        }
+
+        public int GetSkillReq(QualityCategory quality, Pawn pawn) {
+            int q = (int)quality;
+            ImproveThis_Mod.PawnModifiers.ForEach(mod => {
+                q += mod(pawn);
+            });
+            if (q < 0) q = 0;
+            if (q > 5) q = 5;
+            
             if (q == 0) return AwfulSkillReq;
             if (q == 1) return PoorSkillReq;
             if (q == 2) return NormalSkillReq;
@@ -295,18 +332,9 @@ namespace RimWorld___Improve_This {
             if (c.WorkLeft <= 120f) {
                 CompQuality q = t.TryGetComp<CompQuality>();
                 int skill = pawn.skills.GetSkill(SkillDefOf.Construction).Level;
-                bool inspired = pawn.InspirationDef == InspirationDefOf.Inspired_Creativity;
-                bool production = false;
-                if (ModsConfig.IdeologyActive && pawn.Ideo != null) {
-                    Precept_Role role = pawn.Ideo.GetRole(pawn);
-                    if (role != null && role.def.roleEffects != null) {
-                        RoleEffect eff = role.def.roleEffects.FirstOrFallback((RoleEffect e) => e is RoleEffect_ProductionQualityOffset);
-                        if (eff != null) production = true;
-                    }
-                }
-                int skillReq = ImproveThis_Mod.Settings.GetSkillReq(q.Quality, inspired, production);
+                int skillReq = ImproveThis_Mod.Settings.GetSkillReq(q.Quality, pawn);
                 if (skillReq > skill) {
-                    int skillUpperReq = ImproveThis_Mod.Settings.GetSkillReq(q.Quality, true, ModsConfig.IdeologyActive);
+                    int skillUpperReq = ImproveThis_Mod.Settings.GetSkillReq(q.Quality, null);
                     if (skillUpperReq > skill) {
                         if (ModsConfig.IdeologyActive) JobFailReason.Is("ImproveSkillInspireOrRoleNeeded".Translate(skillReq.ToString(), skillUpperReq.ToString()));
                         else JobFailReason.Is("ImproveSkillInspireNeeded".Translate(skillReq.ToString(), skillUpperReq.ToString()));
@@ -426,16 +454,7 @@ namespace RimWorld___Improve_This {
                 Pawn actor = build.actor;
                 if (JobTarget.WorkLeft <= 120f) {
                     int skill = actor.skills.GetSkill(SkillDefOf.Construction).Level;
-                    bool inspired = actor.InspirationDef == InspirationDefOf.Inspired_Creativity;
-                    bool production = false;
-                    if (ModsConfig.IdeologyActive && pawn.Ideo != null) {
-                        Precept_Role role = pawn.Ideo.GetRole(pawn);
-                        if (role != null && role.def.roleEffects != null) {
-                            RoleEffect eff = role.def.roleEffects.FirstOrFallback((RoleEffect e) => e is RoleEffect_ProductionQualityOffset);
-                            if (eff != null) production = true;
-                        }
-                    }
-                    int skillReq = ImproveThis_Mod.Settings.GetSkillReq(q.Quality, inspired, production);
+                    int skillReq = ImproveThis_Mod.Settings.GetSkillReq(q.Quality, actor);
                     if (skillReq > skill) {
                         ReadyForNextToil();
                         return;
@@ -599,11 +618,10 @@ namespace RimWorld___Improve_This {
             if (satisfied) {
                 str.AppendLine();
                 str.Append("WorkLeft".Translate() + ": " + UnityEngine.Mathf.CeilToInt(WorkLeft / 60f));
-                int skillReq = ImproveThis_Mod.Settings.GetSkillReq(parent.GetComp<CompQuality>().Quality, false, false);
+                int skillReq = ImproveThis_Mod.Settings.GetSkillReqBase(parent.GetComp<CompQuality>().Quality);
                 if (skillReq > 0) {
                     str.AppendLine();
-                    if (ModsConfig.IdeologyActive) str.Append("NeedsCreativeOrRole".Translate(skillReq.ToString()));
-                    else str.Append("NeedsCreative".Translate(skillReq.ToString()));
+                    str.Append("NeedsSkill".Translate(skillReq.ToString()));
                 }
             }
 
