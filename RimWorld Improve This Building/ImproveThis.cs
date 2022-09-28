@@ -30,6 +30,9 @@ namespace RimWorld___Improve_This {
                 }
                 AddedVanillaModifiers = true;
             }
+
+            Harmony h = new Harmony("hexi.improvethis");
+            h.Patch(AccessTools.Method(typeof(Designation), "Notify_Removing"), new HarmonyMethod(typeof(ImproveThisClearOnCancel).GetMethod("PrefixNotifyRemoving")));
         }
 
         public override string SettingsCategory() {
@@ -217,6 +220,18 @@ namespace RimWorld___Improve_This {
             if (q == null || q.Quality == QualityCategory.Legendary) return;
             if (t.def.blueprintDef == null) return; // probably piano and such
             c.improveRequested = true;
+        }
+    }
+
+    public class ImproveThisClearOnCancel {
+        public static bool PrefixNotifyRemoving(Designation __instance) {
+            if (__instance.def == Designator_ImproveThis.ImproveDesignationDef && __instance.target.HasThing) {
+                ImproveThisComp c = __instance.target.Thing.TryGetComp<ImproveThisComp>();
+                if (c == null || !c.improveRequested) return false;
+                c.GetDirectlyHeldThings().TryDropAll(c.parent.Position, c.parent.Map, ThingPlaceMode.Near);
+                c._IMPROVEREQ = false;
+            }
+            return false;
         }
     }
 
@@ -568,7 +583,7 @@ namespace RimWorld___Improve_This {
         public float WorkToBuild => parent.def.GetStatValueAbstract(StatDefOf.WorkToBuild, parent.Stuff);
         public float WorkLeft => WorkToBuild - workDone;
 
-        private bool _IMPROVEREQ;
+        public bool _IMPROVEREQ;
         public bool improveRequested {
             get => _IMPROVEREQ;
             set {
