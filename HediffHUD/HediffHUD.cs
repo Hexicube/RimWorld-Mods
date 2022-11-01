@@ -83,6 +83,7 @@ namespace HediffHUD
             isBad = false;
             makesAlert = false;
             everCurableByItem = false;
+            description = "";
         }
     }
 }
